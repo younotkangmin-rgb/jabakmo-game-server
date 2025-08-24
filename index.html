@@ -3,58 +3,154 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jabakmo Game Server Test</title>
+    <title>Jabakmo Fighting Game</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
             margin: 0;
-            background-color: #f0f0f0;
+            overflow: hidden;
+            background-color: #333;
         }
-        .container {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            text-align: center;
-        }
-        #status {
-            margin-top: 20px;
-            font-weight: bold;
-            color: #333;
+        canvas {
+            display: block;
+            margin: 0 auto;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>Jabakmo Game Server Test</h1>
-        <p>Attempting to connect to the game server...</p>
-        <div id="status">Connecting...</div>
-    </div>
-
-    <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+        let players = {}; // To store all players in the game
+        let myPlayerId; // To store my own player ID
 
-        socket.on('connect', () => {
-            document.getElementById('status').innerText = 'Connected to server!';
-            console.log('Connected to server with ID:', socket.id);
-        });
+        const gameConfig = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: 'game-container',
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    debug: false
+                }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
 
-        socket.on('disconnect', () => {
-            document.getElementById('status').innerText = 'Disconnected from server.';
-            console.log('Disconnected from server.');
-        });
+        const game = new Phaser.Game(gameConfig);
 
-        socket.on('connect_error', (error) => {
-            document.getElementById('status').innerText = `Connection error: ${error.message}`;
-            console.error('Connection error:', error);
-        });
+        function preload() {
+            // No assets to preload for now, we'll draw rectangles
+        }
 
-        // You can add more client-side Socket.IO event handlers here
+        function create() {
+            this.cursors = this.input.keyboard.addKeys({
+                up: Phaser.Input.Keyboard.KeyCodes.W,
+                down: Phaser.Input.Keyboard.KeyCodes.S,
+                left: Phaser.Input.Keyboard.KeyCodes.A,
+                right: Phaser.Input.Keyboard.KeyCodes.D
+            });
+
+            // Listen for currentPlayers event from the server
+            socket.on('currentPlayers', (serverPlayers) => {
+                Object.keys(serverPlayers).forEach((id) => {
+                    if (id === socket.id) {
+                        myPlayerId = id;
+                        addPlayer(this, serverPlayers[id]);
+                    } else {
+                        addOtherPlayer(this, serverPlayers[id]);
+                    }
+                });
+            });
+
+            // Listen for newPlayer event
+            socket.on('newPlayer', (playerInfo) => {
+                addOtherPlayer(this, playerInfo);
+            });
+
+            // Listen for playerMoved event
+            socket.on('playerMoved', (playerInfo) => {
+                if (players[playerInfo.id]) {
+                    players[playerInfo.id].setPosition(playerInfo.x, playerInfo.y);
+                }
+            });
+
+            // Listen for disconnect event
+            socket.on('disconnect', (playerId) => {
+                if (players[playerId]) {
+                    players[playerId].destroy();
+                    delete players[playerId];
+                }
+            });
+        }
+
+        function update() {
+            if (myPlayerId && players[myPlayerId]) {
+                let player = players[myPlayerId];
+                let velocityX = 0;
+                let velocityY = 0;
+                const speed = 200;
+
+                if (this.cursors.left.isDown) {
+                    velocityX = -speed;
+                } else if (this.cursors.right.isDown) {
+                    velocityX = speed;
+                }
+
+                if (this.cursors.up.isDown) {
+                    velocityY = -speed;
+                } else if (this.cursors.down.isDown) {
+                    velocityY = speed;
+                }
+
+                // Only send update if there's actual movement
+                if (velocityX !== 0 || velocityY !== 0) {
+                    player.body.setVelocity(velocityX, velocityY);
+                    socket.emit('playerMovement', { x: player.x, y: player.y, velocityX: velocityX, velocityY: velocityY });
+                } else {
+                    player.body.setVelocity(0, 0);
+                    // Send a stop movement if keys are released and player was moving
+                    if (player.body.velocity.x !== 0 || player.body.velocity.y !== 0) {
+                        socket.emit('playerMovement', { x: player.x, y: player.y, velocityX: 0, velocityY: 0 });
+                    }
+                }
+            }
+        }
+
+        function addPlayer(scene, playerInfo) {
+            // Create a graphics object to draw the rectangle
+            const graphics = scene.add.graphics();
+            graphics.fillStyle(parseInt(playerInfo.color.replace('#', '0x')), 1);
+            graphics.fillRect(0, 0, 32, 32); // Draw a 32x32 rectangle
+
+            // Create a sprite from the graphics texture
+            const player = scene.physics.add.sprite(playerInfo.x, playerInfo.y, graphics.generateTexture('player' + playerInfo.id, 32, 32));
+            player.setCollideWorldBounds(true);
+            players[playerInfo.id] = player;
+
+            // Destroy the temporary graphics object
+            graphics.destroy();
+        }
+
+        function addOtherPlayer(scene, playerInfo) {
+            // Create a graphics object to draw the rectangle
+            const graphics = scene.add.graphics();
+            graphics.fillStyle(parseInt(playerInfo.color.replace('#', '0x')), 1);
+            graphics.fillRect(0, 0, 32, 32); // Draw a 32x32 rectangle
+
+            // Create a sprite from the graphics texture
+            const otherPlayer = scene.physics.add.sprite(playerInfo.x, playerInfo.y, graphics.generateTexture('player' + playerInfo.id, 32, 32));
+            otherPlayer.setCollideWorldBounds(true);
+            players[playerInfo.id] = otherPlayer;
+
+            // Destroy the temporary graphics object
+            graphics.destroy();
+        }
     </script>
 </body>
 </html>
