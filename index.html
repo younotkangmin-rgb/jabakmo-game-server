@@ -76,7 +76,7 @@
                 addOtherPlayer(this, playerInfo);
             });
 
-            // Listen for playerState event (authoritative state from server)
+            // Listen for playerState event (authoritative state from server for own player)
             socket.on('playerState', (serverPlayerState) => {
                 if (myPlayerId && players[myPlayerId]) {
                     const myPlayer = players[myPlayerId];
@@ -96,12 +96,20 @@
                         }
                     }
                 }
+            });
 
-                // Update other players' positions (interpolation target)
-                Object.keys(serverPlayerState.otherPlayers).forEach((id) => {
-                    if (players[id]) {
-                        players[id].targetX = serverPlayerState.otherPlayers[id].x;
-                        players[id].targetY = serverPlayerState.otherPlayers[id].y;
+            // Listen for playerMoved event (all players' states from server tick)
+            socket.on('playerMoved', (allPlayersState) => {
+                Object.keys(allPlayersState).forEach((id) => {
+                    if (id !== myPlayerId) {
+                        if (players[id]) {
+                            // Update other players' positions (interpolation target)
+                            players[id].targetX = allPlayersState[id].x;
+                            players[id].targetY = allPlayersState[id].y;
+                        } else {
+                            // If a player is new and not yet added by newPlayer event
+                            addOtherPlayer(this, allPlayersState[id]);
+                        }
                     }
                 });
             });
@@ -148,7 +156,7 @@
         }
 
         function applyInput(player, input) {
-            const speed = 200;
+            const speed = 200; // Client-side speed
             let velocityX = 0;
             let velocityY = 0;
 

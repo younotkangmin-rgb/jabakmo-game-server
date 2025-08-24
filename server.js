@@ -13,6 +13,10 @@ const players = {};
 const colors = ['#FF0000', '#0000FF', '#00FF00', '#FFFF00', '#FF00FF', '#00FFFF'];
 let colorIndex = 0;
 
+// Game settings
+const PLAYER_SPEED = 5; // Server-side speed
+const SERVER_TICK_RATE = 1000 / 10; // 10 updates per second (100ms)
+
 // Serve static files from the current directory (where server.js is)
 app.use(express.static(path.join(__dirname)));
 
@@ -22,11 +26,10 @@ app.get('/', (req, res) => {
 
 // Function to apply input to player state (server-side)
 function applyInput(player, input) {
-  const speed = 5; // Server-side speed, can be different from client
-  if (input.left) player.x -= speed;
-  if (input.right) player.x += speed;
-  if (input.up) player.y -= speed;
-  if (input.down) player.y += speed;
+  if (input.left) player.x -= PLAYER_SPEED;
+  if (input.right) player.x += PLAYER_SPEED;
+  if (input.up) player.y -= PLAYER_SPEED;
+  if (input.down) player.y += PLAYER_SPEED;
 
   // Keep player within bounds (800x600 game area)
   player.x = Math.max(0, Math.min(800, player.x));
@@ -68,16 +71,8 @@ io.on('connection', (socket) => {
         x: player.x,
         y: player.y,
         lastProcessedInput: player.lastProcessedInput,
-        otherPlayers: Object.keys(players).reduce((acc, id) => {
-          if (id !== socket.id) {
-            acc[id] = { x: players[id].x, y: players[id].y };
-          }
-          return acc;
-        }, {})
+        // No need to send otherPlayers here, as it will be sent by the tick rate
       });
-
-      // Broadcast updated position to all other clients for interpolation
-      socket.broadcast.emit('playerMoved', { id: player.id, x: player.x, y: player.y });
     }
   });
 
@@ -90,6 +85,22 @@ io.on('connection', (socket) => {
     io.emit('disconnect', socket.id);
   });
 });
+
+// Game loop / Fixed server tick rate
+setInterval(() => {
+  // Prepare state for all players to send to clients
+  const allPlayersState = {};
+  for (const id in players) {
+    allPlayersState[id] = {
+      x: players[id].x,
+      y: players[id].y,
+      color: players[id].color, // Include color for initial setup
+      id: players[id].id
+    };
+  }
+  // Broadcast all players' states to all clients
+  io.emit('playerMoved', allPlayersState);
+}, SERVER_TICK_RATE);
 
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
