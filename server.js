@@ -74,9 +74,15 @@ io.on('connection', (socket) => {
   socket.on('playerInput', (inputData) => {
     const player = players[socket.id];
     if (player) {
+      // Debugging: Log received input
+      console.log(`Server: Received input from ${socket.id}: ${JSON.stringify(inputData.input)}, seq=${inputData.sequenceNumber}`);
+
       // Apply input to server's authoritative state
       applyInput(player, inputData.input);
       player.lastProcessedInput = inputData.sequenceNumber;
+
+      // Debugging: Log player velocity after applying input
+      console.log(`Server: Player ${socket.id} velocity after input: vx=${player.velocityX}, vy=${player.velocityY}`);
 
       // Send authoritative state back to the client that sent the input
       socket.emit('playerState', {
@@ -112,7 +118,8 @@ setInterval(() => {
       velocityY: players[id].velocityY  // Include velocity
     };
   }
-  // Broadcast all players' states to all clients
+  // Debugging: Log all players state being broadcast
+  console.log(`Server: Broadcasting all players state: ${JSON.stringify(allPlayersState)}`);
   io.emit('playerMoved', allPlayersState);
 }, SERVER_TICK_RATE);
 

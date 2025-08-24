@@ -198,6 +198,9 @@
                 if (myPlayerId && players[myPlayerId]) {
                     const myPlayer = players[myPlayerId];
 
+                    // Debugging: Log server's authoritative position for own player
+                    console.log(`Client: Received playerState for ${myPlayerId}: x=${serverPlayerState.x}, y=${serverPlayerState.y}, lastProcessedInput=${serverPlayerState.lastProcessedInput}`);
+
                     // Reconcile own player's position
                     myPlayer.setPosition(serverPlayerState.x, serverPlayerState.y);
 
@@ -277,6 +280,9 @@
                     left: this.cursors.left.isDown || joystickInput.left,
                     right: this.cursors.right.isDown || joystickInput.right,
                 };
+
+                // Debugging: Log input being sent
+                console.log(`Client: Sending input: ${JSON.stringify(input)}, seq=${inputSequenceNumber}`);
 
                 // Apply input locally (client-side prediction)
                 applyInput(myPlayer, input);
