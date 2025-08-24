@@ -37,7 +37,7 @@ function applyInput(player, input) {
   player.x += velocityX;
   player.y += velocityY;
 
-  // Store velocity for client-side dead reckoning
+  // Always update velocityX and velocityY, even if they are 0
   player.velocityX = velocityX;
   player.velocityY = velocityY;
 
