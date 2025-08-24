@@ -53,6 +53,9 @@
             border-radius: 50%;
             position: absolute;
             touch-action: none; /* Prevent default touch actions */
+            left: 50%; /* Center horizontally */
+            top: 50%; /* Center vertically */
+            transform: translate(-50%, -50%); /* Adjust for its own size */
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
@@ -77,6 +80,7 @@
         let joystickThumb;
         let joystickActive = false;
         let joystickCenter = { x: 0, y: 0 };
+        let joystickBaseOffset = { x: 0, y: 0 }; // Store base offset
         const joystickRadius = 30; // Radius for thumb movement
 
         const gameConfig = {
@@ -124,10 +128,12 @@
             joystickBase = document.getElementById('joystick-base');
             joystickThumb = document.getElementById('joystick-thumb');
 
-            // Get initial center position of the joystick base
+            // Get initial center position of the joystick base and its offset
             const baseRect = joystickBase.getBoundingClientRect();
             joystickCenter.x = baseRect.left + baseRect.width / 2;
             joystickCenter.y = baseRect.top + baseRect.height / 2;
+            joystickBaseOffset.x = baseRect.left; // Top-left corner of the base
+            joystickBaseOffset.y = baseRect.top;
 
             // Event listeners for joystick
             joystickThumb.addEventListener('pointerdown', (e) => {
@@ -153,8 +159,11 @@
                         y = joystickCenter.y + Math.sin(angle) * joystickRadius;
                     }
 
-                    joystickThumb.style.left = `${x - joystickThumb.offsetWidth / 2}px`;
-                    joystickThumb.style.top = `${y - joystickThumb.offsetHeight / 2}px`;
+                    // Position thumb relative to its parent (joystick-container)
+                    // Need to subtract joystickBaseOffset to get position relative to base's top-left
+                    joystickThumb.style.left = `${x - joystickBaseOffset.x}px`;
+                    joystickThumb.style.top = `${y - joystickBaseOffset.y}px`;
+                    joystickThumb.style.transform = `translate(-50%, -50%)`; // Keep centered
                 }
             });
 
@@ -163,8 +172,9 @@
                     e.preventDefault();
                     joystickActive = false;
                     joystickThumb.style.transition = 'left 0.1s ease-out, top 0.1s ease-out'; // Re-enable transition
-                    joystickThumb.style.left = `${joystickCenter.x - joystickThumb.offsetWidth / 2}px`;
-                    joystickThumb.style.top = `${joystickCenter.y - joystickThumb.offsetHeight / 2}px`;
+                    joystickThumb.style.left = `50%`;
+                    joystickThumb.style.top = `50%`;
+                    joystickThumb.style.transform = `translate(-50%, -50%)`; // Reset to center
                 }
             });
 
@@ -251,10 +261,14 @@
                     // Define a dead zone to prevent accidental input
                     const deadZone = 10;
                     if (Math.abs(dx) > deadZone || Math.abs(dy) > deadZone) {
-                        if (dx < -deadZone) joystickInput.left = true;
-                        if (dx > deadZone) joystickInput.right = true;
-                        if (dy < -deadZone) joystickInput.up = true;
-                        if (dy > deadZone) joystickInput.down = true;
+                        // Determine direction based on angle or largest component
+                        if (Math.abs(dx) > Math.abs(dy)) { // Horizontal movement is dominant
+                            if (dx < 0) joystickInput.left = true;
+                            else joystickInput.right = true;
+                        } else { // Vertical movement is dominant
+                            if (dy < 0) joystickInput.up = true;
+                            else joystickInput.down = true;
+                        }
                     }
                 }
 
