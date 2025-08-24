@@ -20,6 +20,19 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Function to apply input to player state (server-side)
+function applyInput(player, input) {
+  const speed = 5; // Server-side speed, can be different from client
+  if (input.left) player.x -= speed;
+  if (input.right) player.x += speed;
+  if (input.up) player.y -= speed;
+  if (input.down) player.y += speed;
+
+  // Keep player within bounds (800x600 game area)
+  player.x = Math.max(0, Math.min(800, player.x));
+  player.y = Math.max(0, Math.min(600, player.y));
+}
+
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
 
@@ -32,7 +45,8 @@ io.on('connection', (socket) => {
     x: Math.floor(Math.random() * 700) + 50, // Random initial X
     y: Math.floor(Math.random() * 500) + 50, // Random initial Y
     color: playerColor,
-    id: socket.id
+    id: socket.id,
+    lastProcessedInput: 0 // To track client-side prediction reconciliation
   };
 
   // Send the current players state to the new player
@@ -41,16 +55,29 @@ io.on('connection', (socket) => {
   // Broadcast the new player to all other players
   socket.broadcast.emit('newPlayer', players[socket.id]);
 
-  // Handle player movement
-  socket.on('playerMovement', (movementData) => {
-    if (players[socket.id]) {
-      // Update player position based on velocity (simple physics)
-      // For a real game, you'd want server-side authoritative movement
-      players[socket.id].x = movementData.x;
-      players[socket.id].y = movementData.y;
+  // Handle player input
+  socket.on('playerInput', (inputData) => {
+    const player = players[socket.id];
+    if (player) {
+      // Apply input to server's authoritative state
+      applyInput(player, inputData.input);
+      player.lastProcessedInput = inputData.sequenceNumber;
 
-      // Broadcast updated position to all clients
-      io.emit('playerMoved', players[socket.id]);
+      // Send authoritative state back to the client that sent the input
+      socket.emit('playerState', {
+        x: player.x,
+        y: player.y,
+        lastProcessedInput: player.lastProcessedInput,
+        otherPlayers: Object.keys(players).reduce((acc, id) => {
+          if (id !== socket.id) {
+            acc[id] = { x: players[id].x, y: players[id].y };
+          }
+          return acc;
+        }, {})
+      });
+
+      // Broadcast updated position to all other clients for interpolation
+      socket.broadcast.emit('playerMoved', { id: player.id, x: player.x, y: player.y });
     }
   });
 

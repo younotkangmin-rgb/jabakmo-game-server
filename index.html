@@ -23,6 +23,8 @@
         const socket = io();
         let players = {}; // To store all players in the game
         let myPlayerId; // To store my own player ID
+        let inputSequenceNumber = 0;
+        let pendingInputs = [];
 
         const gameConfig = {
             type: Phaser.AUTO,
@@ -32,7 +34,8 @@
             physics: {
                 default: 'arcade',
                 arcade: {
-                    debug: false
+                    debug: false,
+                    gravity: { y: 0 } // No gravity for top-down movement
                 }
             },
             scene: {
@@ -73,11 +76,34 @@
                 addOtherPlayer(this, playerInfo);
             });
 
-            // Listen for playerMoved event
-            socket.on('playerMoved', (playerInfo) => {
-                if (players[playerInfo.id]) {
-                    players[playerInfo.id].setPosition(playerInfo.x, playerInfo.y);
+            // Listen for playerState event (authoritative state from server)
+            socket.on('playerState', (serverPlayerState) => {
+                if (myPlayerId && players[myPlayerId]) {
+                    const myPlayer = players[myPlayerId];
+
+                    // Reconcile own player's position
+                    myPlayer.setPosition(serverPlayerState.x, serverPlayerState.y);
+
+                    // Remove processed inputs from pendingInputs
+                    let i = 0;
+                    while (i < pendingInputs.length) {
+                        if (pendingInputs[i].sequenceNumber <= serverPlayerState.lastProcessedInput) {
+                            pendingInputs.splice(i, 1);
+                        } else {
+                            // Re-apply pending inputs to correct position
+                            applyInput(myPlayer, pendingInputs[i].input);
+                            i++;
+                        }
+                    }
                 }
+
+                // Update other players' positions (interpolation target)
+                Object.keys(serverPlayerState.otherPlayers).forEach((id) => {
+                    if (players[id]) {
+                        players[id].targetX = serverPlayerState.otherPlayers[id].x;
+                        players[id].targetY = serverPlayerState.otherPlayers[id].y;
+                    }
+                });
             });
 
             // Listen for disconnect event
@@ -91,64 +117,77 @@
 
         function update() {
             if (myPlayerId && players[myPlayerId]) {
-                let player = players[myPlayerId];
-                let velocityX = 0;
-                let velocityY = 0;
-                const speed = 200;
+                const myPlayer = players[myPlayerId];
+                const input = {
+                    up: this.cursors.up.isDown,
+                    down: this.cursors.down.isDown,
+                    left: this.cursors.left.isDown,
+                    right: this.cursors.right.isDown,
+                };
 
-                if (this.cursors.left.isDown) {
-                    velocityX = -speed;
-                } else if (this.cursors.right.isDown) {
-                    velocityX = speed;
-                }
+                // Apply input locally (client-side prediction)
+                applyInput(myPlayer, input);
 
-                if (this.cursors.up.isDown) {
-                    velocityY = -speed;
-                } else if (this.cursors.down.isDown) {
-                    velocityY = speed;
-                }
+                // Store input for reconciliation
+                inputSequenceNumber++;
+                pendingInputs.push({ input: input, sequenceNumber: inputSequenceNumber });
 
-                // Only send update if there's actual movement
-                if (velocityX !== 0 || velocityY !== 0) {
-                    player.body.setVelocity(velocityX, velocityY);
-                    socket.emit('playerMovement', { x: player.x, y: player.y, velocityX: velocityX, velocityY: velocityY });
-                } else {
-                    player.body.setVelocity(0, 0);
-                    // Send a stop movement if keys are released and player was moving
-                    if (player.body.velocity.x !== 0 || player.body.velocity.y !== 0) {
-                        socket.emit('playerMovement', { x: player.x, y: player.y, velocityX: 0, velocityY: 0 });
-                    }
-                }
+                // Send input to server
+                socket.emit('playerInput', { input: input, sequenceNumber: inputSequenceNumber });
             }
+
+            // Interpolate other players' positions
+            Object.keys(players).forEach((id) => {
+                if (id !== myPlayerId && players[id].targetX !== undefined) {
+                    const otherPlayer = players[id];
+                    const lerpFactor = 0.1; // Adjust for smoother/faster interpolation
+                    otherPlayer.x = Phaser.Math.Linear(otherPlayer.x, otherPlayer.targetX, lerpFactor);
+                    otherPlayer.y = Phaser.Math.Linear(otherPlayer.y, otherPlayer.targetY, lerpFactor);
+                }
+            });
+        }
+
+        function applyInput(player, input) {
+            const speed = 200;
+            let velocityX = 0;
+            let velocityY = 0;
+
+            if (input.left) {
+                velocityX = -speed;
+            } else if (input.right) {
+                velocityX = speed;
+            }
+
+            if (input.up) {
+                velocityY = -speed;
+            } else if (input.down) {
+                velocityY = speed;
+            }
+
+            player.body.setVelocity(velocityX, velocityY);
         }
 
         function addPlayer(scene, playerInfo) {
-            // Create a graphics object to draw the rectangle
             const graphics = scene.add.graphics();
             graphics.fillStyle(parseInt(playerInfo.color.replace('#', '0x')), 1);
-            graphics.fillRect(0, 0, 32, 32); // Draw a 32x32 rectangle
+            graphics.fillRect(0, 0, 32, 32);
 
-            // Create a sprite from the graphics texture
             const player = scene.physics.add.sprite(playerInfo.x, playerInfo.y, graphics.generateTexture('player' + playerInfo.id, 32, 32));
             player.setCollideWorldBounds(true);
             players[playerInfo.id] = player;
 
-            // Destroy the temporary graphics object
             graphics.destroy();
         }
 
         function addOtherPlayer(scene, playerInfo) {
-            // Create a graphics object to draw the rectangle
             const graphics = scene.add.graphics();
             graphics.fillStyle(parseInt(playerInfo.color.replace('#', '0x')), 1);
-            graphics.fillRect(0, 0, 32, 32); // Draw a 32x32 rectangle
+            graphics.fillRect(0, 0, 32, 32);
 
-            // Create a sprite from the graphics texture
             const otherPlayer = scene.physics.add.sprite(playerInfo.x, playerInfo.y, graphics.generateTexture('player' + playerInfo.id, 32, 32));
             otherPlayer.setCollideWorldBounds(true);
             players[playerInfo.id] = otherPlayer;
 
-            // Destroy the temporary graphics object
             graphics.destroy();
         }
     </script>
