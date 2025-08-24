@@ -14,7 +14,7 @@ const colors = ['#FF0000', '#0000FF', '#00FF00', '#FFFF00', '#FF00FF', '#00FFFF'
 let colorIndex = 0;
 
 // Game settings
-const PLAYER_SPEED = 100; // Server-side speed - Adjusted to 100
+const PLAYER_SPEED = 10; // Server-side speed - Adjusted to 10
 const SERVER_TICK_RATE = 1000 / 10; // 10 updates per second (100ms)
 
 // Serve static files from the current directory (where server.js is)
