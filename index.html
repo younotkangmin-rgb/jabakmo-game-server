@@ -41,7 +41,7 @@
             height: 120px;
             background-color: #555;
             border-radius: 50%;
-            position: absolute;
+            position: relative; /* Make base a positioning context for thumb */
             display: flex;
             justify-content: center;
             align-items: center;
@@ -64,8 +64,9 @@
 <body>
     <div id="game-container"></div>
     <div id="joystick-container">
-        <div id="joystick-base"></div>
-        <div id="joystick-thumb"></div>
+        <div id="joystick-base">
+            <div id="joystick-thumb"></div>
+        </div>
     </div>
 
     <script>
@@ -79,8 +80,7 @@
         let joystickBase;
         let joystickThumb;
         let joystickActive = false;
-        let joystickCenter = { x: 0, y: 0 };
-        let joystickBaseOffset = { x: 0, y: 0 }; // Store base offset
+        let joystickCenter = { x: 0, y: 0 }; // Center of the base relative to its own top-left
         const joystickRadius = 30; // Radius for thumb movement
 
         const gameConfig = {
@@ -128,12 +128,9 @@
             joystickBase = document.getElementById('joystick-base');
             joystickThumb = document.getElementById('joystick-thumb');
 
-            // Get initial center position of the joystick base and its offset
-            const baseRect = joystickBase.getBoundingClientRect();
-            joystickCenter.x = baseRect.left + baseRect.width / 2;
-            joystickCenter.y = baseRect.top + baseRect.height / 2;
-            joystickBaseOffset.x = baseRect.left; // Top-left corner of the base
-            joystickBaseOffset.y = baseRect.top;
+            // Calculate joystick center relative to its own element
+            joystickCenter.x = joystickBase.offsetWidth / 2;
+            joystickCenter.y = joystickBase.offsetHeight / 2;
 
             // Event listeners for joystick
             joystickThumb.addEventListener('pointerdown', (e) => {
@@ -145,8 +142,10 @@
             window.addEventListener('pointermove', (e) => {
                 if (joystickActive) {
                     e.preventDefault();
-                    let x = e.clientX;
-                    let y = e.clientY;
+                    // Get touch position relative to the joystick base
+                    const baseRect = joystickBase.getBoundingClientRect();
+                    let x = e.clientX - baseRect.left;
+                    let y = e.clientY - baseRect.top;
 
                     let dx = x - joystickCenter.x;
                     let dy = y - joystickCenter.y;
@@ -159,10 +158,9 @@
                         y = joystickCenter.y + Math.sin(angle) * joystickRadius;
                     }
 
-                    // Position thumb relative to its parent (joystick-container)
-                    // Need to subtract joystickBaseOffset to get position relative to base's top-left
-                    joystickThumb.style.left = `${x - joystickBaseOffset.x}px`;
-                    joystickThumb.style.top = `${y - joystickBaseOffset.y}px`;
+                    // Position thumb relative to its parent (joystick-base)
+                    joystickThumb.style.left = `${x}px`;
+                    joystickThumb.style.top = `${y}px`;
                     joystickThumb.style.transform = `translate(-50%, -50%)`; // Keep centered
                 }
             });
