@@ -9,16 +9,28 @@
             margin: 0;
             overflow: hidden;
             background-color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
         }
         canvas {
             display: block;
             margin: 0 auto;
+        }
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
+    <div id="game-container"></div>
     <script>
         const socket = io();
         let players = {}; // To store all players in the game
@@ -37,6 +49,13 @@
                     debug: false,
                     gravity: { y: 0 } // No gravity for top-down movement
                 }
+            },
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH,
+                parent: 'game-container',
+                width: 800,
+                height: 600
             },
             scene: {
                 preload: preload,
