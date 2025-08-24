@@ -106,6 +106,8 @@
                             // Update other players' positions (interpolation target)
                             players[id].targetX = allPlayersState[id].x;
                             players[id].targetY = allPlayersState[id].y;
+                            players[id].velocityX = allPlayersState[id].velocityX; // Store velocity
+                            players[id].velocityY = allPlayersState[id].velocityY; // Store velocity
                         } else {
                             // If a player is new and not yet added by newPlayer event
                             addOtherPlayer(this, allPlayersState[id]);
@@ -144,11 +146,17 @@
                 socket.emit('playerInput', { input: input, sequenceNumber: inputSequenceNumber });
             }
 
-            // Interpolate other players' positions
+            // Interpolate and Extrapolate other players' positions
             Object.keys(players).forEach((id) => {
                 if (id !== myPlayerId && players[id].targetX !== undefined) {
                     const otherPlayer = players[id];
                     const lerpFactor = 0.1; // Adjust for smoother/faster interpolation
+
+                    // Extrapolate based on last known velocity
+                    otherPlayer.x += otherPlayer.velocityX * (game.loop.delta / 1000); // Convert delta to seconds
+                    otherPlayer.y += otherPlayer.velocityY * (game.loop.delta / 1000);
+
+                    // Interpolate towards the server's authoritative position
                     otherPlayer.x = Phaser.Math.Linear(otherPlayer.x, otherPlayer.targetX, lerpFactor);
                     otherPlayer.y = Phaser.Math.Linear(otherPlayer.y, otherPlayer.targetY, lerpFactor);
                 }
@@ -195,6 +203,12 @@
             const otherPlayer = scene.physics.add.sprite(playerInfo.x, playerInfo.y, graphics.generateTexture('player' + playerInfo.id, 32, 32));
             otherPlayer.setCollideWorldBounds(true);
             players[playerInfo.id] = otherPlayer;
+
+            // Initialize target and velocity for dead reckoning
+            otherPlayer.targetX = playerInfo.x;
+            otherPlayer.targetY = playerInfo.y;
+            otherPlayer.velocityX = playerInfo.velocityX || 0;
+            otherPlayer.velocityY = playerInfo.velocityY || 0;
 
             graphics.destroy();
         }

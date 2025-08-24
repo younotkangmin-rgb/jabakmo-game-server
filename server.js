@@ -26,10 +26,20 @@ app.get('/', (req, res) => {
 
 // Function to apply input to player state (server-side)
 function applyInput(player, input) {
-  if (input.left) player.x -= PLAYER_SPEED;
-  if (input.right) player.x += PLAYER_SPEED;
-  if (input.up) player.y -= PLAYER_SPEED;
-  if (input.down) player.y += PLAYER_SPEED;
+  let velocityX = 0;
+  let velocityY = 0;
+
+  if (input.left) velocityX = -PLAYER_SPEED;
+  if (input.right) velocityX = PLAYER_SPEED;
+  if (input.up) velocityY = -PLAYER_SPEED;
+  if (input.down) velocityY = PLAYER_SPEED;
+
+  player.x += velocityX;
+  player.y += velocityY;
+
+  // Store velocity for client-side dead reckoning
+  player.velocityX = velocityX;
+  player.velocityY = velocityY;
 
   // Keep player within bounds (800x600 game area)
   player.x = Math.max(0, Math.min(800, player.x));
@@ -49,7 +59,9 @@ io.on('connection', (socket) => {
     y: Math.floor(Math.random() * 500) + 50, // Random initial Y
     color: playerColor,
     id: socket.id,
-    lastProcessedInput: 0 // To track client-side prediction reconciliation
+    lastProcessedInput: 0, // To track client-side prediction reconciliation
+    velocityX: 0, // Initial velocity
+    velocityY: 0  // Initial velocity
   };
 
   // Send the current players state to the new player
@@ -94,8 +106,10 @@ setInterval(() => {
     allPlayersState[id] = {
       x: players[id].x,
       y: players[id].y,
-      color: players[id].color, // Include color for initial setup
-      id: players[id].id
+      color: players[id].color,
+      id: players[id].id,
+      velocityX: players[id].velocityX, // Include velocity
+      velocityY: players[id].velocityY  // Include velocity
     };
   }
   // Broadcast all players' states to all clients
