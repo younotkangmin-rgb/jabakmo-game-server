@@ -27,42 +27,32 @@
             display: block;
             margin: 0 auto;
         }
-        #controls {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 10px;
-            background-color: #222;
+        #joystick-container {
             width: 100%;
-            box-sizing: border-box;
-        }
-        .dpad-button {
-            width: 60px;
-            height: 60px;
-            background-color: #555;
-            border: 2px solid #777;
-            border-radius: 8px;
-            margin: 5px;
+            height: 200px; /* Fixed height for joystick area */
             display: flex;
             justify-content: center;
             align-items: center;
-            font-size: 24px;
-            color: white;
-            user-select: none; /* Prevent text selection on touch */
-            -webkit-user-select: none;
-            -ms-user-select: none;
-            touch-action: manipulation; /* Prevent default touch actions like double tap zoom */
+            background-color: #222;
+            position: relative;
         }
-        .dpad-button:active {
-            background-color: #777;
-        }
-        .dpad-row {
+        #joystick-base {
+            width: 120px;
+            height: 120px;
+            background-color: #555;
+            border-radius: 50%;
+            position: absolute;
             display: flex;
+            justify-content: center;
+            align-items: center;
         }
-        .dpad-center {
+        #joystick-thumb {
             width: 60px;
             height: 60px;
-            margin: 5px;
+            background-color: #777;
+            border-radius: 50%;
+            position: absolute;
+            touch-action: none; /* Prevent default touch actions */
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
@@ -70,13 +60,9 @@
 </head>
 <body>
     <div id="game-container"></div>
-    <div id="controls">
-        <div class="dpad-row">
-            <div class="dpad-button" id="left-button">&#9664;</div>
-            <div class="dpad-button" id="up-button">&#9650;</div>
-            <div class="dpad-button" id="down-button">&#9660;</div>
-            <div class="dpad-button" id="right-button">&#9654;</div>
-        </div>
+    <div id="joystick-container">
+        <div id="joystick-base"></div>
+        <div id="joystick-thumb"></div>
     </div>
 
     <script>
@@ -86,13 +72,12 @@
         let inputSequenceNumber = 0;
         let pendingInputs = [];
 
-        // Touch input state
-        let touchInput = {
-            up: false,
-            down: false,
-            left: false,
-            right: false
-        };
+        // Joystick variables
+        let joystickBase;
+        let joystickThumb;
+        let joystickActive = false;
+        let joystickCenter = { x: 0, y: 0 };
+        const joystickRadius = 30; // Radius for thumb movement
 
         const gameConfig = {
             type: Phaser.AUTO,
@@ -135,29 +120,53 @@
                 right: Phaser.Input.Keyboard.KeyCodes.D
             });
 
-            // Touch input for mobile
-            const setupButtonListeners = (buttonId, direction) => {
-                const button = document.getElementById(buttonId);
-                if (button) {
-                    button.addEventListener('touchstart', (e) => {
-                        e.preventDefault();
-                        touchInput[direction] = true;
-                    });
-                    button.addEventListener('touchend', (e) => {
-                        e.preventDefault();
-                        touchInput[direction] = false;
-                    });
-                    button.addEventListener('touchcancel', (e) => {
-                        e.preventDefault();
-                        touchInput[direction] = false;
-                    });
-                }
-            };
+            // Joystick setup
+            joystickBase = document.getElementById('joystick-base');
+            joystickThumb = document.getElementById('joystick-thumb');
 
-            setupButtonListeners('up-button', 'up');
-            setupButtonListeners('down-button', 'down');
-            setupButtonListeners('left-button', 'left');
-            setupButtonListeners('right-button', 'right');
+            // Get initial center position of the joystick base
+            const baseRect = joystickBase.getBoundingClientRect();
+            joystickCenter.x = baseRect.left + baseRect.width / 2;
+            joystickCenter.y = baseRect.top + baseRect.height / 2;
+
+            // Event listeners for joystick
+            joystickThumb.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                joystickActive = true;
+                joystickThumb.style.transition = 'none'; // Disable transition during drag
+            });
+
+            window.addEventListener('pointermove', (e) => {
+                if (joystickActive) {
+                    e.preventDefault();
+                    let x = e.clientX;
+                    let y = e.clientY;
+
+                    let dx = x - joystickCenter.x;
+                    let dy = y - joystickCenter.y;
+
+                    let distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance > joystickRadius) {
+                        let angle = Math.atan2(dy, dx);
+                        x = joystickCenter.x + Math.cos(angle) * joystickRadius;
+                        y = joystickCenter.y + Math.sin(angle) * joystickRadius;
+                    }
+
+                    joystickThumb.style.left = `${x - joystickThumb.offsetWidth / 2}px`;
+                    joystickThumb.style.top = `${y - joystickThumb.offsetHeight / 2}px`;
+                }
+            });
+
+            window.addEventListener('pointerup', (e) => {
+                if (joystickActive) {
+                    e.preventDefault();
+                    joystickActive = false;
+                    joystickThumb.style.transition = 'left 0.1s ease-out, top 0.1s ease-out'; // Re-enable transition
+                    joystickThumb.style.left = `${joystickCenter.x - joystickThumb.offsetWidth / 2}px`;
+                    joystickThumb.style.top = `${joystickCenter.y - joystickThumb.offsetHeight / 2}px`;
+                }
+            });
 
             // Listen for currentPlayers event from the server
             socket.on('currentPlayers', (serverPlayers) => {
@@ -229,12 +238,32 @@
             if (myPlayerId && players[myPlayerId]) {
                 const myPlayer = players[myPlayerId];
                 
-                // Combine keyboard and touch inputs
+                // Get joystick input
+                let joystickInput = { up: false, down: false, left: false, right: false };
+                if (joystickActive) {
+                    const thumbRect = joystickThumb.getBoundingClientRect();
+                    const currentX = thumbRect.left + thumbRect.width / 2;
+                    const currentY = thumbRect.top + thumbRect.height / 2;
+
+                    const dx = currentX - joystickCenter.x;
+                    const dy = currentY - joystickCenter.y;
+
+                    // Define a dead zone to prevent accidental input
+                    const deadZone = 10;
+                    if (Math.abs(dx) > deadZone || Math.abs(dy) > deadZone) {
+                        if (dx < -deadZone) joystickInput.left = true;
+                        if (dx > deadZone) joystickInput.right = true;
+                        if (dy < -deadZone) joystickInput.up = true;
+                        if (dy > deadZone) joystickInput.down = true;
+                    }
+                }
+
+                // Combine keyboard and joystick inputs
                 const input = {
-                    up: this.cursors.up.isDown || touchInput.up,
-                    down: this.cursors.down.isDown || touchInput.down,
-                    left: this.cursors.left.isDown || touchInput.left,
-                    right: this.cursors.right.isDown || touchInput.right,
+                    up: this.cursors.up.isDown || joystickInput.up,
+                    down: this.cursors.down.isDown || joystickInput.down,
+                    left: this.cursors.left.isDown || joystickInput.left,
+                    right: this.cursors.right.isDown || joystickInput.right,
                 };
 
                 // Apply input locally (client-side prediction)
