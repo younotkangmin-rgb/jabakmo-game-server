@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Jabakmo Fighting Game</title>
     <style>
         body {
@@ -10,20 +10,59 @@
             overflow: hidden;
             background-color: #333;
             display: flex;
-            justify-content: center;
+            flex-direction: column; /* Arrange items vertically */
+            justify-content: flex-start; /* Align items to the top */
             align-items: center;
             min-height: 100vh;
+        }
+        #game-container {
+            width: 100vw;
+            flex-grow: 1; /* Allow game container to take available space */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden; /* Hide overflow if game scales beyond bounds */
         }
         canvas {
             display: block;
             margin: 0 auto;
         }
-        #game-container {
-            width: 100vw;
-            height: 100vh;
+        #controls {
             display: flex;
             justify-content: center;
             align-items: center;
+            padding: 10px;
+            background-color: #222;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .dpad-button {
+            width: 60px;
+            height: 60px;
+            background-color: #555;
+            border: 2px solid #777;
+            border-radius: 8px;
+            margin: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: white;
+            user-select: none; /* Prevent text selection on touch */
+            -webkit-user-select: none;
+            -ms-user-select: none;
+            touch-action: manipulation; /* Prevent default touch actions like double tap zoom */
+        }
+        .dpad-button:active {
+            background-color: #777;
+        }
+        .dpad-row {
+            display: flex;
+        }
+        .dpad-center {
+            width: 60px;
+            height: 60px;
+            margin: 5px;
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
@@ -31,12 +70,29 @@
 </head>
 <body>
     <div id="game-container"></div>
+    <div id="controls">
+        <div class="dpad-row">
+            <div class="dpad-button" id="left-button">&#9664;</div>
+            <div class="dpad-button" id="up-button">&#9650;</div>
+            <div class="dpad-button" id="down-button">&#9660;</div>
+            <div class="dpad-button" id="right-button">&#9654;</div>
+        </div>
+    </div>
+
     <script>
         const socket = io();
         let players = {}; // To store all players in the game
         let myPlayerId; // To store my own player ID
         let inputSequenceNumber = 0;
         let pendingInputs = [];
+
+        // Touch input state
+        let touchInput = {
+            up: false,
+            down: false,
+            left: false,
+            right: false
+        };
 
         const gameConfig = {
             type: Phaser.AUTO,
@@ -71,12 +127,37 @@
         }
 
         function create() {
+            // Keyboard input for desktop
             this.cursors = this.input.keyboard.addKeys({
                 up: Phaser.Input.Keyboard.KeyCodes.W,
                 down: Phaser.Input.Keyboard.KeyCodes.S,
                 left: Phaser.Input.Keyboard.KeyCodes.A,
                 right: Phaser.Input.Keyboard.KeyCodes.D
             });
+
+            // Touch input for mobile
+            const setupButtonListeners = (buttonId, direction) => {
+                const button = document.getElementById(buttonId);
+                if (button) {
+                    button.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        touchInput[direction] = true;
+                    });
+                    button.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        touchInput[direction] = false;
+                    });
+                    button.addEventListener('touchcancel', (e) => {
+                        e.preventDefault();
+                        touchInput[direction] = false;
+                    });
+                }
+            };
+
+            setupButtonListeners('up-button', 'up');
+            setupButtonListeners('down-button', 'down');
+            setupButtonListeners('left-button', 'left');
+            setupButtonListeners('right-button', 'right');
 
             // Listen for currentPlayers event from the server
             socket.on('currentPlayers', (serverPlayers) => {
@@ -147,11 +228,13 @@
         function update() {
             if (myPlayerId && players[myPlayerId]) {
                 const myPlayer = players[myPlayerId];
+                
+                // Combine keyboard and touch inputs
                 const input = {
-                    up: this.cursors.up.isDown,
-                    down: this.cursors.down.isDown,
-                    left: this.cursors.left.isDown,
-                    right: this.cursors.right.isDown,
+                    up: this.cursors.up.isDown || touchInput.up,
+                    down: this.cursors.down.isDown || touchInput.down,
+                    left: this.cursors.left.isDown || touchInput.left,
+                    right: this.cursors.right.isDown || touchInput.right,
                 };
 
                 // Apply input locally (client-side prediction)
